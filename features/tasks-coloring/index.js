@@ -618,16 +618,16 @@ function clearPaint(node) {
 function applyPaint(node, color, textColorOverride = null, bgOpacity = 1, textOpacity = 1) {
   if (!node || !color) return;
 
-  node.classList.add(MARK);
   const text = textColorOverride || pickContrastingText(color);
   node.dataset.cfTaskTextColor = textColorOverride ? text.toLowerCase() : '';
 
   const textColorValue = colorToRgba(text, textOpacity);
 
-  // CRITICAL FIX: Only apply background if bgOpacity > 0
-  // When bgOpacity is 0, remove background styles to let Google's default CSS show
+  // CRITICAL FIX: Only apply background AND marker class if bgOpacity > 0
+  // The cf-task-colored class prevents Google's CSS from applying, so only add it when we have a background
   if (bgOpacity > 0) {
     const bgColorValue = colorToRgba(color, bgOpacity);
+    node.classList.add(MARK); // Add class only when we have background
     node.dataset.cfTaskBgColor = bgColorValue;
     node.style.setProperty('background-color', bgColorValue, 'important');
     node.style.setProperty('border-color', bgColorValue, 'important');
@@ -635,7 +635,9 @@ function applyPaint(node, color, textColorOverride = null, bgOpacity = 1, textOp
     node.style.setProperty('filter', 'none', 'important');
     node.style.setProperty('opacity', '1', 'important');
   } else {
-    // Remove ALL background-related styling - let Google's default show through
+    // Remove ALL background-related styling AND the marker class
+    // This allows Google's default CSS to apply the background
+    node.classList.remove(MARK); // Remove class to let Google's CSS work
     node.style.removeProperty('background-color');
     node.style.removeProperty('border-color');
     node.style.removeProperty('mix-blend-mode');
