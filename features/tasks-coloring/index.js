@@ -667,8 +667,8 @@ function isTaskElementCompleted(taskElement) {
 function clearPaint(node) {
   if (!node) return;
 
-  // CRITICAL: Remove ALL custom styles to return to pure Google defaults
-  // Don't try to restore saved backgrounds - just remove everything
+  // CRITICAL: Remove ALL custom styles and return to Google's defaults
+  // First, remove all our custom inline styles
   node.style.removeProperty('background-color');
   node.style.removeProperty('border-color');
   node.style.removeProperty('color');
@@ -678,8 +678,7 @@ function clearPaint(node) {
   node.style.removeProperty('filter');
   node.style.removeProperty('opacity');
 
-  // Remove ALL dataset attributes (including saved Google colors)
-  // This forces fresh capture next time we paint
+  // Remove ALL our custom dataset attributes
   delete node.dataset.cfTaskTextColor;
   delete node.dataset.cfTaskBgColor;
   delete node.dataset.cfTaskTextActual;
@@ -706,6 +705,9 @@ function clearPaint(node) {
 
   // Remove our custom class marker
   node.classList.remove(MARK);
+
+  // Force a style recalculation to make browser recompute Google's default styles
+  void node.offsetHeight;
 }
 
 /**
@@ -1474,16 +1476,32 @@ function initTasksColoring() {
       // Unpaint all tasks from the specified list
       const { listId } = message;
       if (listId) {
-        await unpaintTasksFromList(listId);
-        console.log(`[ColorKit] Reset colors for list: ${listId}`);
+        // CRITICAL: Invalidate ALL caches FIRST to prevent re-applying stale colors
+        invalidateColorCache();
+        cachedColorMap = null;
+        colorMapLastLoaded = 0;
 
-        // CRITICAL: Invalidate cache to ensure fresh data on next paint
+        // Wait a moment for storage changes to propagate from popup
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Invalidate caches again after waiting
+        invalidateColorCache();
+        cachedColorMap = null;
+        colorMapLastLoaded = 0;
+
+        // Clear the paint from all tasks in this list
+        const unpaintedCount = await unpaintTasksFromList(listId);
+        console.log(`[ColorKit] Reset ${unpaintedCount} tasks for list: ${listId}`);
+
+        // Wait again to ensure storage has fully propagated
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Final cache invalidation
         invalidateColorCache();
 
-        // Force a complete repaint to ensure all tasks return to Google defaults
-        // Use immediate mode to bypass throttling
-        setTimeout(() => repaintSoon(true), 100);
-        setTimeout(() => repaintSoon(true), 500);
+        // Now trigger a repaint to ensure all tasks reflect the reset
+        // This repaint will use the cleared storage values
+        setTimeout(() => repaintSoon(true), 50);
       }
     }
   });
