@@ -667,30 +667,27 @@ function isTaskElementCompleted(taskElement) {
 function clearPaint(node) {
   if (!node) return;
 
-  // Restore Google's original background if we have it stored
-  if (node.dataset.cfGoogleBg) {
-    node.style.setProperty('background-color', node.dataset.cfGoogleBg, 'important');
-  } else {
-    node.style.removeProperty('background-color');
-  }
-
-  if (node.dataset.cfGoogleBorder) {
-    node.style.setProperty('border-color', node.dataset.cfGoogleBorder, 'important');
-  } else {
-    node.style.removeProperty('border-color');
-  }
-
+  // CRITICAL: Remove ALL custom styles to return to pure Google defaults
+  // Don't try to restore saved backgrounds - just remove everything
+  node.style.removeProperty('background-color');
+  node.style.removeProperty('border-color');
   node.style.removeProperty('color');
   node.style.removeProperty('-webkit-text-fill-color');
   node.style.removeProperty('--cf-task-text-color');
   node.style.removeProperty('mix-blend-mode');
   node.style.removeProperty('filter');
   node.style.removeProperty('opacity');
+
+  // Remove ALL dataset attributes (including saved Google colors)
+  // This forces fresh capture next time we paint
   delete node.dataset.cfTaskTextColor;
   delete node.dataset.cfTaskBgColor;
   delete node.dataset.cfTaskTextActual;
-  // Keep cfGoogleBg and cfGoogleBorder for future use
+  delete node.dataset.cfGoogleBg;
+  delete node.dataset.cfGoogleBorder;
+  delete node.dataset.cfGoogleText;
 
+  // Remove custom styles from all child text elements
   node.querySelectorAll?.('span, div, p, h1, h2, h3, h4, h5, h6').forEach((textEl) => {
     textEl.style.removeProperty('color');
     textEl.style.removeProperty('-webkit-text-fill-color');
@@ -700,12 +697,14 @@ function clearPaint(node) {
     textEl.style.removeProperty('text-decoration-color');
   });
 
+  // Remove custom styles from all SVG elements
   node.querySelectorAll?.('svg').forEach((svg) => {
     svg.style.removeProperty('color');
     svg.style.removeProperty('fill');
     svg.style.removeProperty('opacity');
   });
 
+  // Remove our custom class marker
   node.classList.remove(MARK);
 }
 
@@ -732,11 +731,8 @@ async function unpaintTasksFromList(listId) {
     if (taskListId === listId) {
       const paintTarget = getPaintTarget(taskEl);
       if (paintTarget) {
-        unpaintElement(paintTarget);
-        // Delete saved Google backgrounds to force recapture on next paint
-        delete paintTarget.dataset.cfGoogleBg;
-        delete paintTarget.dataset.cfGoogleBorder;
-        delete paintTarget.dataset.cfGoogleText;
+        // Use clearPaint() to remove ALL custom styling and return to Google defaults
+        clearPaint(paintTarget);
         unpaintedCount++;
       }
     }
@@ -1480,6 +1476,14 @@ function initTasksColoring() {
       if (listId) {
         await unpaintTasksFromList(listId);
         console.log(`[ColorKit] Reset colors for list: ${listId}`);
+
+        // CRITICAL: Invalidate cache to ensure fresh data on next paint
+        invalidateColorCache();
+
+        // Force a complete repaint to ensure all tasks return to Google defaults
+        // Use immediate mode to bypass throttling
+        setTimeout(() => repaintSoon(true), 100);
+        setTimeout(() => repaintSoon(true), 500);
       }
     }
   });
