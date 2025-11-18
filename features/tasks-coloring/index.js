@@ -1446,11 +1446,17 @@ function initTasksColoring() {
       area === 'sync' &&
       (changes['cf.taskColors'] || changes['cf.taskListColors'] || changes['cf.taskListTextColors'])
     ) {
+      // Aggressively clear ALL caches when colors change
       invalidateColorCache();
+      cachedColorMap = null;
+      colorMapLastLoaded = 0;
       repaintSoon(); // Repaint with new colors
     }
     if (area === 'sync' && changes.settings) {
+      // Aggressively clear ALL caches when settings change
       invalidateColorCache();
+      cachedColorMap = null;
+      colorMapLastLoaded = 0;
       repaintSoon();
     }
     if (area === 'local' && changes['cf.taskToListMap']) {
@@ -1473,35 +1479,29 @@ function initTasksColoring() {
     }
 
     if (message.type === 'RESET_LIST_COLORS') {
-      // Unpaint all tasks from the specified list
+      // Unpaint all tasks from the specified list and return to Google defaults
       const { listId } = message;
       if (listId) {
-        // CRITICAL: Invalidate ALL caches FIRST to prevent re-applying stale colors
+        console.log(`[ColorKit] Resetting colors for list: ${listId}`);
+
+        // CRITICAL: Invalidate ALL caches to prevent reading stale data
         invalidateColorCache();
         cachedColorMap = null;
         colorMapLastLoaded = 0;
 
-        // Wait a moment for storage changes to propagate from popup
-        await new Promise((resolve) => setTimeout(resolve, 50));
-
-        // Invalidate caches again after waiting
-        invalidateColorCache();
-        cachedColorMap = null;
-        colorMapLastLoaded = 0;
-
-        // Clear the paint from all tasks in this list
+        // Remove all custom styling from tasks in this list
         const unpaintedCount = await unpaintTasksFromList(listId);
-        console.log(`[ColorKit] Reset ${unpaintedCount} tasks for list: ${listId}`);
+        console.log(`[ColorKit] Reset ${unpaintedCount} tasks to Google defaults`);
 
-        // Wait again to ensure storage has fully propagated
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        // Final cache invalidation
+        // Invalidate cache one more time to ensure fresh reads
         invalidateColorCache();
+        cachedColorMap = null;
+        colorMapLastLoaded = 0;
 
-        // Now trigger a repaint to ensure all tasks reflect the reset
-        // This repaint will use the cleared storage values
-        setTimeout(() => repaintSoon(true), 50);
+        // DON'T trigger a repaint here - let the storage listener handle it
+        // The storage.onChanged listener will see the cleared colors and trigger
+        // a natural repaint with the correct (empty) storage values
+        // This prevents race conditions where we repaint before storage propagates
       }
     }
   });
