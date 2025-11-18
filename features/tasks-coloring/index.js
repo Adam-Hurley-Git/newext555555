@@ -667,8 +667,8 @@ function isTaskElementCompleted(taskElement) {
 function clearPaint(node) {
   if (!node) return;
 
-  // CRITICAL: Remove ALL custom styles to return to pure Google defaults
-  // Don't try to restore saved backgrounds - just remove everything
+  // CRITICAL: Remove ALL custom styles and return to Google's defaults
+  // First, remove all our custom inline styles
   node.style.removeProperty('background-color');
   node.style.removeProperty('border-color');
   node.style.removeProperty('color');
@@ -678,8 +678,7 @@ function clearPaint(node) {
   node.style.removeProperty('filter');
   node.style.removeProperty('opacity');
 
-  // Remove ALL dataset attributes (including saved Google colors)
-  // This forces fresh capture next time we paint
+  // Remove ALL our custom dataset attributes
   delete node.dataset.cfTaskTextColor;
   delete node.dataset.cfTaskBgColor;
   delete node.dataset.cfTaskTextActual;
@@ -706,6 +705,9 @@ function clearPaint(node) {
 
   // Remove our custom class marker
   node.classList.remove(MARK);
+
+  // Force a style recalculation to make browser recompute Google's default styles
+  void node.offsetHeight;
 }
 
 /**
@@ -1444,11 +1446,17 @@ function initTasksColoring() {
       area === 'sync' &&
       (changes['cf.taskColors'] || changes['cf.taskListColors'] || changes['cf.taskListTextColors'])
     ) {
+      // Aggressively clear ALL caches when colors change
       invalidateColorCache();
+      cachedColorMap = null;
+      colorMapLastLoaded = 0;
       repaintSoon(); // Repaint with new colors
     }
     if (area === 'sync' && changes.settings) {
+      // Aggressively clear ALL caches when settings change
       invalidateColorCache();
+      cachedColorMap = null;
+      colorMapLastLoaded = 0;
       repaintSoon();
     }
     if (area === 'local' && changes['cf.taskToListMap']) {
@@ -1471,19 +1479,29 @@ function initTasksColoring() {
     }
 
     if (message.type === 'RESET_LIST_COLORS') {
-      // Unpaint all tasks from the specified list
+      // Unpaint all tasks from the specified list and return to Google defaults
       const { listId } = message;
       if (listId) {
-        await unpaintTasksFromList(listId);
-        console.log(`[ColorKit] Reset colors for list: ${listId}`);
+        console.log(`[ColorKit] Resetting colors for list: ${listId}`);
 
-        // CRITICAL: Invalidate cache to ensure fresh data on next paint
+        // CRITICAL: Invalidate ALL caches to prevent reading stale data
         invalidateColorCache();
+        cachedColorMap = null;
+        colorMapLastLoaded = 0;
 
-        // Force a complete repaint to ensure all tasks return to Google defaults
-        // Use immediate mode to bypass throttling
-        setTimeout(() => repaintSoon(true), 100);
-        setTimeout(() => repaintSoon(true), 500);
+        // Remove all custom styling from tasks in this list
+        const unpaintedCount = await unpaintTasksFromList(listId);
+        console.log(`[ColorKit] Reset ${unpaintedCount} tasks to Google defaults`);
+
+        // Invalidate cache one more time to ensure fresh reads
+        invalidateColorCache();
+        cachedColorMap = null;
+        colorMapLastLoaded = 0;
+
+        // DON'T trigger a repaint here - let the storage listener handle it
+        // The storage.onChanged listener will see the cleared colors and trigger
+        // a natural repaint with the correct (empty) storage values
+        // This prevents race conditions where we repaint before storage propagates
       }
     }
   });
